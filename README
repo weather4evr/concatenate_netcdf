@@ -1,0 +1,37 @@
+------------
+Purpose:
+------------
+JEDI/UFO currently outputs one netCDF file per processor for each observation
+  platform.  This program concatenates all the individual processor files
+  into one file for each specified platform.
+
+It essentially does the same thing as "ncrcat", but is parallel and much faster.
+
+------------
+Compilation:
+------------
+Edit and then run compile.csh. If someone wants to make a proper Makefile, go for it.
+
+------------
+Input:
+------------
+All input is provided through a namelist, which must be named "input.nml" and be in the run directory:
+
+&share
+obspath = '/glade/scratch/liuz/pandac/30km_coldstartFC_GFS_2streams/OMF/2018050300/1/Data',
+obs_platforms = 'sondes','aircraft','satwind','amsua_metop-a',
+output_path = './'
+/
+
+obspath : path (full or relative) to where the JEDI/UFO output files for each processor live
+obs_platforms : list of observation types to concatenate
+output_path : path (full or relative) where you want to store the output (the concatenated files)
+
+------------
+Run:
+------------
+It's an MPI executable.  Run immediately after JEDI/UFO with the same number of processors used
+  to run JEDI/UFO.  It should run in a few seconds
+
+On cheyenne with intel-MPT:
+mpiexec_mpt ./concatenate_netcdf_files.x

@@ -1,0 +1,6 @@
+# Do not track these
+*.x
+*.mod
+*.o
+*.nc4
+output_file
