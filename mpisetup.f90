@@ -12,7 +12,7 @@ include 'mpif.h'
 private
 
 public :: mpi_initialize, mpi_cleanup, mpi_datacounts, stop2
-public :: displs, scount
+public :: displs, scount, displs1d, scount1d
 
 integer(i_kind), public :: npe, mype
 integer(i_kind), public :: mype_out = 0
@@ -20,6 +20,7 @@ integer(i_kind), public :: mpi_status(mpi_status_size)
 integer(i_kind), public :: mpi_realkind
 character(len=4), public :: pe_name
 integer(i_kind),allocatable,dimension(:) :: displs, scount
+integer(i_kind),allocatable,dimension(:) :: displs1d, scount1d
 
 
 contains
@@ -43,6 +44,7 @@ else
 endif
 
 allocate(displs(0:npe-1), scount(0:npe-1))
+allocate(displs1d(0:npe-1), scount1d(0:npe-1))
 
 end subroutine mpi_initialize
 
@@ -58,17 +60,30 @@ if (ierr /= 0) then
  print *, 'MPI_Finalize error status = ',ierr
 end if
 deallocate(displs, scount)
+deallocate(displs1d, scount1d)
 end subroutine mpi_cleanup
 
-subroutine mpi_datacounts(dims)
+subroutine mpi_datacounts(dims,nobs_curr)
    integer(i_kind), intent(in) :: dims(4)
+   integer(i_kind), intent(in) :: nobs_curr
    integer(i_kind) :: ierr, i
+
    call mpi_allgather(product(dims), 1, mpi_integer, scount(0:npe-1), 1, mpi_integer, mpi_comm_world,ierr)
-!  if ( mype == mype_out ) write(*,*) ' scount = ',scount
    displs(0) = 0
    do i = 1, npe-1
       displs(i) = scount(i-1) + displs(i-1)
    enddo
+
+!  if ( mype == mype_out ) write(*,*) ' scount = ',scount
+   ! For true 2d variables (not 1-d character vars)
+   !  process 1 level at a time, so we need to know the
+   !  correct counds for nobs_curr, and not product(dims)
+   call mpi_allgather(nobs_curr, 1, mpi_integer, scount1d(0:npe-1), 1, mpi_integer, mpi_comm_world,ierr)
+   displs1d(0) = 0
+   do i = 1, npe-1
+      displs1d(i) = scount1d(i-1) + displs1d(i-1)
+   enddo
+!  if ( mype == mype_out ) write(*,*) ' scount1d = ',scount1d
 end subroutine mpi_datacounts
 
 subroutine stop2(ierror_code)

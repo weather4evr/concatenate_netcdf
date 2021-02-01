@@ -3,7 +3,7 @@ module netcdf_mod
 
 use netcdf
 use kinds, only : i_kind
-use mpisetup, only: stop2, npe, mype, mype_out, displs, scount
+use mpisetup, only: stop2, npe, mype, mype_out, displs, scount, displs1d, scount1d
 
 implicit none
 
@@ -13,7 +13,7 @@ private
 
 ! public subroutines
 public :: open_netcdf, close_netcdf, get_netcdf_dims, define_output_file_from_template, get_and_output_netcdf_var
-public :: get_netcdf_info
+public :: get_netcdf_info, get_and_output_netcdf_var_2d_real
 
 ! variables visible to this module only
 character(len=100) :: DIMSNAME,VARSNAME,ATTSNAME
@@ -109,6 +109,7 @@ subroutine define_output_file_from_template(ncidin,fout,nobs_tot,ncidout)
 
 !  rcode=nf90_open(path=trim(adjustl(fin)),mode=nf90_nowrite,ncid=ncidin)
    rcode=nf90_create(path=trim(adjustl(fout)),cmode=nf90_clobber,ncid=ncidout)
+!  rcode=nf90_create(path=trim(adjustl(fout)),cmode=NF90_NETCDF4,ncid=ncidout) ! make netcdf4 format...this should be able to overwrite existing files
    rcode=nf90_inquire(ncidin,ndims,nvars,ngatts,unlimdimid)
    do idims=1,ndims
       rcode=nf90_inquire_dimension(ncidin,idims,DIMSNAME,dimsval)
@@ -278,5 +279,48 @@ subroutine get_netcdf_var_1d_char(fileid,variable,dims,ncidout,nobs_tot,just_cop
    deallocate(output_allData)
 
 end subroutine get_netcdf_var_1d_char
+
+subroutine get_and_output_netcdf_var_2d_real(fileid,variable,dims,ncidout,nobs_tot,just_copy)
+
+   integer(i_kind), intent(in) :: fileid, ncidout,nobs_tot
+   character(len=*), intent(in) :: variable
+   integer(i_kind), intent(in), dimension(4) :: dims
+   logical, intent(in) :: just_copy
+
+   real, dimension(dims(1),dims(2))         :: output
+   real, allocatable, dimension(:,:)  :: output_allData
+
+   ierr = 0
+   ncstatus = nf90_inq_varid(fileid,trim(adjustl(variable)),ncvarid) ; ierr = ierr + ncstatus
+   ncstatus = nf90_get_var(fileid,ncvarid,output)                    ; ierr = ierr + ncstatus
+
+   if ( ierr /= 0 ) then
+      write(0,*) 'Error reading data for '//trim(adjustl(variable))
+      write(0,*) 'ierr = ',ierr
+      call stop2(38) ! stop
+   endif
+
+   if ( just_copy ) then
+      allocate( output_allData(dims(1),dims(2)) ) ! nlevs, nobs_curr
+      output_allData = output
+   else
+      allocate(output_allData(dims(1),nobs_tot)) ! nlevs, nobs
+     ! Handle one vertical level at a time
+      do i = 1,dims(1)
+         call mpi_gatherv(output(i,:), scount1d(mype), mpi_real, output_allData(i,:), scount1d(:), displs1d(:), mpi_real, mype_out ,mpi_comm_world,iret)
+         if ( iret /= 0 ) then
+            if ( mype == mype_out ) write(*,*)'mpi_gatherv problem for '//trim(adjustl(variable))
+         endif
+      enddo
+   endif
+
+   ! output the variable from mype_out
+    if ( mype == mype_out ) then
+       rcode = nf90_inq_varid(ncidout,trim(adjustl(variable)),ncvarid)
+       rcode = nf90_put_var(ncidout,ncvarid,output_allData)
+    endif
+   deallocate(output_allData)
+
+end subroutine get_and_output_netcdf_var_2d_real
 
 end module netcdf_mod
