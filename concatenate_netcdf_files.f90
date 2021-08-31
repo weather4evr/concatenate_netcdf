@@ -2,7 +2,8 @@ program concatenate_netcdf_files
 
 use netcdf
 use netcdf_mod, only: open_netcdf, close_netcdf, get_netcdf_dims, define_output_file_from_template, &
-                      get_and_output_netcdf_var, get_netcdf_info, get_and_output_netcdf_var_2d_real
+                      get_and_output_netcdf_var, get_netcdf_info, get_and_output_netcdf_var_2d_real, &
+                      large_variable_support
 use kinds, only : i_kind, r_kind
 use mpisetup, only : mpi_initialize, mpi_cleanup, mpi_datacounts, mype, npe, stop2, mype_out, pe_name, &
                        make_mpi_subcommunicator, new_comm
@@ -23,7 +24,7 @@ logical :: fexist, just_copy
 logical, allocatable, dimension(:) :: fexist_all
 integer, allocatable, dimension(:) :: nobs_all
 
-namelist /share/ obspath, output_path, obs_platforms, fname_prefx
+namelist /share/ obspath, output_path, obs_platforms, fname_prefx, large_variable_support
 
 ! mpi definitions.
 include 'mpif.h'

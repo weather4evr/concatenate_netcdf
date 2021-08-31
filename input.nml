@@ -1,9 +1,7 @@
 &share
-obspath = '/glade/scratch/liuz/pandac/30km_coldstartFC_GFS_2streams/OMF/2018050300/1/Data',
-obs_platforms = 'sondes','aircraft','satwind','dummy','amsua_metop-a',
+obspath = '/glade/scratch/liuz/regional_mpasjedi/3denvar_single_15km_abi/hofx6h/2019050100/Data',
+obs_platforms = 'abi_g16','sondes','aircraft','satwind','amsua_metop-a',
 output_path = './'
 fname_prefx = 'obsout_omb'
+large_variable_support = .false.
 /
-obspath = '/glade/scratch/schwartz/MPAS/30km_mesh/jedi_test/2020072600/jedi_ens_mean/Data',
-obs_platforms = 'sondes','aircraft','satwind'
-output_path = './'

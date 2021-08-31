@@ -21,12 +21,20 @@ All input is provided through a namelist, which must be named "input.nml" and be
 obspath = '/glade/scratch/liuz/pandac/30km_coldstartFC_GFS_2streams/OMF/2018050300/1/Data',
 obs_platforms = 'sondes','aircraft','satwind','amsua_metop-a',
 output_path = './'
+fname_prefx = 'hofx_ydiag'
+large_variable_support = .true.
 /
 
 obspath : path (full or relative) to where the JEDI/UFO output files for each processor live
 obs_platforms : list of observation types to concatenate
 output_path : path (full or relative) where you want to store the output (the concatenated files)
+fname_prefx: prefix of the files to read
+large_variable_support: controls the format of output netCDF files.  If "true", output netCDF4 format file,
+			which can accomodate variables > 2 GB.  If "false", output netCDF classic file.
+			If you expect to have concatenated variables > 2 GB, set to true. Default is false.
 
+Note that the actual files that are read are (see concatenate_netcdf_files.f90):
+   trim(adjustl(obspath))//'/'//trim(adjustl(fname_prefx))//'_'//trim(adjustl(ob_platform))//'_'//pe_name//'.nc4'
 ------------
 Run:
 ------------

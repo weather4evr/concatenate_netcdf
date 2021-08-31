@@ -15,6 +15,9 @@ private
 public :: open_netcdf, close_netcdf, get_netcdf_dims, define_output_file_from_template, get_and_output_netcdf_var
 public :: get_netcdf_info, get_and_output_netcdf_var_2d_real
 
+! public variables
+logical, public :: large_variable_support = .false. 
+
 ! variables visible to this module only
 character(len=100) :: DIMSNAME,VARSNAME,ATTSNAME
 integer(i_kind) :: ncidin,ncidout,ndims,nvars,ngatts,unlimdimid,idims,dimsval,ivars,idims2,ivars2,&
@@ -107,9 +110,19 @@ subroutine define_output_file_from_template(ncidin,fout,nobs_tot,ncidout)
    integer(i_kind), intent(in)    :: nobs_tot
    integer(i_kind), intent(inout) :: ncidout
 
+   integer(i_kind) :: netcdf_file_type
+
+   ! this variable is read in from namelist
+   if ( large_variable_support ) then
+      netcdf_file_type = NF90_NETCDF4
+   else
+      netcdf_file_type = NF90_CLOBBER
+   endif
+
 !  rcode=nf90_open(path=trim(adjustl(fin)),mode=nf90_nowrite,ncid=ncidin)
-   rcode=nf90_create(path=trim(adjustl(fout)),cmode=nf90_clobber,ncid=ncidout)
+!  rcode=nf90_create(path=trim(adjustl(fout)),cmode=nf90_clobber,ncid=ncidout)
 !  rcode=nf90_create(path=trim(adjustl(fout)),cmode=NF90_NETCDF4,ncid=ncidout) ! make netcdf4 format...this should be able to overwrite existing files
+   rcode=nf90_create(path=trim(adjustl(fout)),cmode=netcdf_file_type,ncid=ncidout)
    rcode=nf90_inquire(ncidin,ndims,nvars,ngatts,unlimdimid)
    do idims=1,ndims
       rcode=nf90_inquire_dimension(ncidin,idims,DIMSNAME,dimsval)
