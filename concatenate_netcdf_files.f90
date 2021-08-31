@@ -4,7 +4,8 @@ use netcdf
 use netcdf_mod, only: open_netcdf, close_netcdf, get_netcdf_dims, define_output_file_from_template, &
                       get_and_output_netcdf_var, get_netcdf_info, get_and_output_netcdf_var_2d_real
 use kinds, only : i_kind, r_kind
-use mpisetup, only : mpi_initialize, mpi_cleanup, mpi_datacounts, mype, npe, stop2, mype_out, pe_name
+use mpisetup, only : mpi_initialize, mpi_cleanup, mpi_datacounts, mype, npe, stop2, mype_out, pe_name, &
+                       make_mpi_subcommunicator, new_comm
 
 implicit none
 
@@ -20,6 +21,7 @@ integer(i_kind) :: xtype, ndims_var, natts, dimids(10), dims(4), char_len
 integer(i_kind) :: iunit = 10
 logical :: fexist, just_copy
 logical, allocatable, dimension(:) :: fexist_all
+integer, allocatable, dimension(:) :: nobs_all
 
 namelist /share/ obspath, output_path, obs_platforms, fname_prefx
 
@@ -44,10 +46,11 @@ do i = 1,nmax
 enddo
 
 allocate(fexist_all(npe))
+allocate(nobs_all(0:npe-1))
 
 do itype=1, num_obs_platforms ! loop over the obs platforms you specified
 
-   ob_platform = obs_platforms(itype) ! 'sondes'
+   ob_platform = obs_platforms(itype) ! 'e.g., sondes'
 
    ! output file name; output from mype_out
   !outname = trim(adjustl(output_path))//'/obsout_omb_'//trim(adjustl(ob_platform))//'_all.nc4'
@@ -82,6 +85,23 @@ do itype=1, num_obs_platforms ! loop over the obs platforms you specified
 
    ! Now figure out the total number of observations across all files/processors
    call mpi_allreduce(nobs_curr, nobs_tot, 1, mpi_integer, mpi_sum, mpi_comm_world, iret)
+
+   ! Need to make sure mype_out has nobs_curr > 0....
+    call mpi_allgather(nobs_curr, 1, mpi_integer, nobs_all(:), 1, mpi_integer, mpi_comm_world, iret)
+    do i = 0,npe-1
+       if ( nobs_all(i) > 0 ) then
+          mype_out = i
+          exit
+       endif
+    enddo
+
+   ! Make subcommunicator...we only want to do operations where nobs_curr > 0
+   ! Basically, if nobs_curr <= 0, we don't want it to participate in the concatenating
+   !   Easiest way to do that is to just put those processors on a different mpi communicator
+   !   ! The new communicator is new_comm, from mpisetup_mod
+   call make_mpi_subcommunicator(nobs_curr)
+
+   if ( nobs_curr <= 0 ) nvars = -9999 ! This will bypass the loop over variables, and basically skip everything
 
    ! Create the output netcdf file that will have all concatenated obs over all processors.
    ! Define all dimensions and variables, but don't yet fill with data
@@ -138,12 +158,13 @@ do itype=1, num_obs_platforms ! loop over the obs platforms you specified
    if ( mype == mype_out ) call close_netcdf(outname,ncidout) ! only open on mype_out
 
    call mpi_barrier(mpi_comm_world,iret)  ! sync up before going to next ob type
+   call mpi_comm_free(new_comm,iret) ! free/clear the sub-communicator
 
 enddo ! end loop over "itype"
 
 ! clean up
 call mpi_cleanup
-deallocate(fexist_all)
+deallocate(fexist_all,nobs_all)
 stop
 
 end program concatenate_netcdf_files

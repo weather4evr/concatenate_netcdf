@@ -3,7 +3,7 @@ module netcdf_mod
 
 use netcdf
 use kinds, only : i_kind
-use mpisetup, only: stop2, npe, mype, mype_out, displs, scount, displs1d, scount1d
+use mpisetup, only: stop2, npe, mype, mype_out, displs, scount, displs1d, scount1d, new_comm
 
 implicit none
 
@@ -188,7 +188,7 @@ subroutine get_netcdf_var_1d_real(fileid,variable,dims,ncidout,nobs_tot,just_cop
       output_allData = output
    else
       allocate(output_allData(nobs_tot))
-      call mpi_gatherv(output, scount(mype), mpi_real, output_allData, scount(:), displs(:), mpi_real, mype_out ,mpi_comm_world,iret)
+      call mpi_gatherv(output, scount(mype), mpi_real, output_allData, scount(:), displs(:), mpi_real, mype_out ,new_comm,iret)
    endif
 
    ! output the variable from mype_out
@@ -225,7 +225,7 @@ subroutine get_netcdf_var_1d_integer(fileid,variable,dims,ncidout,nobs_tot,just_
       output_allData = output
    else
       allocate(output_allData(nobs_tot))
-      call mpi_gatherv(output, scount(mype), mpi_integer, output_allData, scount(:), displs(:), mpi_integer, mype_out ,mpi_comm_world,iret)
+      call mpi_gatherv(output, scount(mype), mpi_integer, output_allData, scount(:), displs(:), mpi_integer, mype_out ,new_comm,iret)
    endif
 
    ! output the variable from mype_out
@@ -267,7 +267,7 @@ subroutine get_netcdf_var_1d_char(fileid,variable,dims,ncidout,nobs_tot,just_cop
       output_allData = output
    else
       allocate(output_allData(nobs_tot))
-      call mpi_gatherv(output, scount(mype), mpi_char, output_allData, scount(:), displs(:), mpi_char, mype_out ,mpi_comm_world,iret)
+      call mpi_gatherv(output, scount(mype), mpi_char, output_allData, scount(:), displs(:), mpi_char, mype_out ,new_comm,iret)
    endif
 !  write(*,*) ' size1, sizeof1 = ',size(output_allData),sizeof(output_allData)
 
@@ -307,7 +307,7 @@ subroutine get_and_output_netcdf_var_2d_real(fileid,variable,dims,ncidout,nobs_t
       allocate(output_allData(dims(1),nobs_tot)) ! nlevs, nobs
      ! Handle one vertical level at a time
       do i = 1,dims(1)
-         call mpi_gatherv(output(i,:), scount1d(mype), mpi_real, output_allData(i,:), scount1d(:), displs1d(:), mpi_real, mype_out ,mpi_comm_world,iret)
+         call mpi_gatherv(output(i,:), scount1d(mype), mpi_real, output_allData(i,:), scount1d(:), displs1d(:), mpi_real, mype_out ,new_comm,iret)
          if ( iret /= 0 ) then
             if ( mype == mype_out ) write(*,*)'mpi_gatherv problem for '//trim(adjustl(variable))
          endif
