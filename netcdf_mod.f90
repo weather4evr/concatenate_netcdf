@@ -15,8 +15,12 @@ private
 public :: open_netcdf, close_netcdf, get_netcdf_dims, define_output_file_from_template, get_and_output_netcdf_var
 public :: get_netcdf_info, get_and_output_netcdf_var_2d_real
 
+! parameter variable visible to this module only
+integer(i_kind), parameter :: nmax_groups = 500
+
 ! public variables
 logical, public :: large_variable_support = .false. 
+integer(i_kind), public :: numgrps, ncgroup_ids(nmax_groups)
 
 ! variables visible to this module only
 character(len=100) :: DIMSNAME,VARSNAME,ATTSNAME
@@ -110,7 +114,9 @@ subroutine define_output_file_from_template(ncidin,fout,nobs_tot,ncidout)
    integer(i_kind), intent(in)    :: nobs_tot
    integer(i_kind), intent(inout) :: ncidout
 
-   integer(i_kind) :: netcdf_file_type
+   integer(i_kind) :: netcdf_file_type, group_ncid
+   integer(i_kind) :: varids(1000)
+   character(len=500) :: group_name
 
    ! this variable is read in from namelist
    if ( large_variable_support ) then
@@ -123,6 +129,8 @@ subroutine define_output_file_from_template(ncidin,fout,nobs_tot,ncidout)
 !  rcode=nf90_create(path=trim(adjustl(fout)),cmode=nf90_clobber,ncid=ncidout)
 !  rcode=nf90_create(path=trim(adjustl(fout)),cmode=NF90_NETCDF4,ncid=ncidout) ! make netcdf4 format...this should be able to overwrite existing files
    rcode=nf90_create(path=trim(adjustl(fout)),cmode=netcdf_file_type,ncid=ncidout)
+
+   ! dimensions
    rcode=nf90_inquire(ncidin,ndims,nvars,ngatts,unlimdimid)
    do idims=1,ndims
       rcode=nf90_inquire_dimension(ncidin,idims,DIMSNAME,dimsval)
@@ -132,6 +140,8 @@ subroutine define_output_file_from_template(ncidin,fout,nobs_tot,ncidout)
          rcode=nf90_def_dim(ncidout,trim(adjustl(DIMSNAME)),dimsval,idims2)
       endif
    end do
+
+   ! variables
    do ivars=1,nvars
       rcode=nf90_inquire_variable(ncidin,ivars,VARSNAME,varstype,varsndims,varsdimids,varsnatts)
       rcode=nf90_def_var(ncidout,trim(adjustl(VARSNAME)),varstype,varsdimids(1:varsndims),ivars2)
@@ -141,6 +151,25 @@ subroutine define_output_file_from_template(ncidin,fout,nobs_tot,ncidout)
          rcode=nf90_copy_att(ncidin,ivars,ATTSNAME,ncidout,ivars2)
       end do
    end do
+
+   ! groups...numgrps could be 0, in which case this block doesn't get executed, which is ok.
+  !rcode = nf90_inq_grps(ncfileid, numgrps, ncgroup_ids)
+   do i = 1,numgrps
+      rcode = nf90_inq_grpname(ncgroup_ids(i), group_name)
+      rcode = nf90_def_grp(ncidout, group_name, group_ncid) ! define group in output file; refer to group by $group_nicd
+      rcode = nf90_inq_varids(ncgroup_ids(i), nvars, varids) ! get all the variables in the ith group from input file
+      do ivars=1,nvars ! loop over the number of variables in the group
+         rcode=nf90_inquire_variable(ncgroup_ids(i),ivars,VARSNAME,varstype,varsndims,varsdimids,varsnatts)
+         rcode=nf90_def_var(group_ncid,trim(adjustl(VARSNAME)),varstype,varsdimids(1:varsndims),ivars2)
+        !rcode=nf90_def_var(ncidout,VARSNAME,varstype,varsndims,varsdimids,ivars)
+         do ivarsnatts=1,varsnatts
+            rcode=nf90_inq_attname(ncgroup_ids(i),ivars,ivarsnatts,ATTSNAME)
+            rcode=nf90_copy_att(ncgroup_ids(i),ivars,ATTSNAME,group_ncid,ivars2)
+         end do
+      end do
+   end do
+
+   ! global attributes
    do igatts=1,ngatts
       rcode=nf90_inq_attname(ncidin,nf90_global,igatts,ATTSNAME)
       rcode=nf90_copy_att(ncidin,nf90_global,ATTSNAME,ncidout,nf90_global)

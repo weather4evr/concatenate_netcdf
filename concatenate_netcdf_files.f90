@@ -3,7 +3,7 @@ program concatenate_netcdf_files
 use netcdf
 use netcdf_mod, only: open_netcdf, close_netcdf, get_netcdf_dims, define_output_file_from_template, &
                       get_and_output_netcdf_var, get_netcdf_info, get_and_output_netcdf_var_2d_real, &
-                      large_variable_support
+                      large_variable_support, numgrps, ncgroup_ids
 use kinds, only : i_kind, r_kind
 use mpisetup, only : mpi_initialize, mpi_cleanup, mpi_datacounts, mype, npe, stop2, mype_out, pe_name, &
                        make_mpi_subcommunicator, new_comm
@@ -83,6 +83,17 @@ do itype=1, num_obs_platforms ! loop over the obs platforms you specified
 
    ! Get number of dimensions and number of variables in file
    call get_netcdf_info(obsfile,ncfileid,ndims,nvars) ! ndims not used
+
+   ! Figure out if this file has "groups". If so, we need to force large_variable_support = true.
+   !  This will output a netCDF4 file, and "groups" are only allowed in netCDF4 files.
+   !  Also, if there are indeed "groups", we can assume we are reading netCDF4 files.
+   !  See here: !  https://www.unidata.ucar.edu/software/netcdf/docs-fortran/f90_groups.html
+   ! numgrps is the number of groups, and the group ids are in "ncgroup_ids"...we can refer to the group by its id
+   rcode = nf90_inq_grps(ncfileid, numgrps, ncgroup_ids)
+   if ( numgrps > 0 ) then
+      if ( mype == mype_out ) write(*,*)'There are ',numgrps,' groups in the file'
+      large_variable_support = true.
+   endif
 
    ! Now figure out the total number of observations across all files/processors
    call mpi_allreduce(nobs_curr, nobs_tot, 1, mpi_integer, mpi_sum, mpi_comm_world, iret)
