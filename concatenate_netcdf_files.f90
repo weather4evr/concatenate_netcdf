@@ -3,7 +3,7 @@ program concatenate_netcdf_files
 use netcdf
 use netcdf_mod, only: open_netcdf, close_netcdf, get_netcdf_dims, define_output_file_from_template, &
                       get_and_output_netcdf_var, get_netcdf_info, get_and_output_netcdf_var_2d_real, &
-                      large_variable_support, numgrps, ncgroup_ids
+                      setup_groups, large_variable_support, numgrps, ncgroup_ids_out, ncgroup_ids_in
 use kinds, only : i_kind, r_kind
 use mpisetup, only : mpi_initialize, mpi_cleanup, mpi_datacounts, mype, npe, stop2, mype_out, pe_name, &
                        make_mpi_subcommunicator, new_comm
@@ -15,7 +15,7 @@ character(len=500) obsfile, varname, obspath, output_path, outname, fname_prefx
 character(len=100) :: obs_platforms(nmax) = ''
 character(len=100) :: ob_platform
 character(len=NF90_MAX_NAME) :: dim_names(4)
-integer(i_kind) :: i, itype, ipe, j, nobs_curr, v, nobs_tot, iret
+integer(i_kind) :: i, itype, ipe, j, nobs_curr, v, nobs_tot, iret, g
 integer(i_kind) :: ndims, nvars, num_obs_platforms
 integer(i_kind) :: ncfileid, ncidout, ncvarid, rcode
 integer(i_kind) :: xtype, ndims_var, natts, dimids(10), dims(4), char_len
@@ -84,16 +84,12 @@ do itype=1, num_obs_platforms ! loop over the obs platforms you specified
    ! Get number of dimensions and number of variables in file
    call get_netcdf_info(obsfile,ncfileid,ndims,nvars) ! ndims not used
 
-   ! Figure out if this file has "groups". If so, we need to force large_variable_support = true.
+   ! Figure out if this file has "groups". If so, we need to force large_variable_support = true (done in subroutine).
    !  This will output a netCDF4 file, and "groups" are only allowed in netCDF4 files.
    !  Also, if there are indeed "groups", we can assume we are reading netCDF4 files.
-   !  See here: !  https://www.unidata.ucar.edu/software/netcdf/docs-fortran/f90_groups.html
-   ! numgrps is the number of groups, and the group ids are in "ncgroup_ids"...we can refer to the group by its id
-   rcode = nf90_inq_grps(ncfileid, numgrps, ncgroup_ids)
-   if ( numgrps > 0 ) then
-      if ( mype == mype_out ) write(*,*)'There are ',numgrps,' groups in the file'
-      large_variable_support = true.
-   endif
+   !  See here: https://www.unidata.ucar.edu/software/netcdf/docs-fortran/f90_groups.html
+   ! numgrps is the number of groups, and the group ids in put files are in "ncgroup_ids_in"...we can refer to the group by its id
+   call setup_groups(ncfileid) ! sets numgrps, ncgroup_ids_out, ncgroup_ids_in (from netcdf_mod)
 
    ! Now figure out the total number of observations across all files/processors
    call mpi_allreduce(nobs_curr, nobs_tot, 1, mpi_integer, mpi_sum, mpi_comm_world, iret)
@@ -118,18 +114,23 @@ do itype=1, num_obs_platforms ! loop over the obs platforms you specified
    ! Create the output netcdf file that will have all concatenated obs over all processors.
    ! Define all dimensions and variables, but don't yet fill with data
    if ( mype == mype_out ) then
-      call define_output_file_from_template(ncfileid,outname,nobs_tot,ncidout)
+      call define_output_file_from_template(ncfileid,outname,nobs_tot,ncidout) ! ncidout only on mype_out...seems to be ok.
       write(*,fmt='(a20,i8)')' total num obs = ',nobs_tot
    endif
 
-   ! Each processor loops over all variables in the file
+   numgrps = numgrps + 1 ! Need to also loop over the "root" group, which is basically just the main file.  
+                         !   For g = 1, we are effectively just outputing traditional variables not in a group
+                         !   It's okay to ruse this variable at this point in the code.
+
+   ! Each processor loops over all groups and variables in the file
+   do g = 1,numgrps
    do v = 1,nvars
 
       dims(:) = 1 ! reset each time through loop
       dim_names(:) = ''
-      rcode = nf90_Inquire_Variable(ncfileid, v, varname, xtype, ndims_var, dimids, natts) ! Output is varname, xtype,ndims_var, dimids
+      rcode = nf90_Inquire_Variable(ncgroup_ids_in(g), v, varname, xtype, ndims_var, dimids, natts) ! Output is varname, xtype,ndims_var, dimids
       do j = 1,ndims_var
-         rcode = nf90_inquire_dimension( ncfileid, dimids(j), name=dim_names(j), len=dims(j) )
+         rcode = nf90_inquire_dimension( ncgroup_ids_in(g), dimids(j), name=dim_names(j), len=dims(j) )
          dim_names(j) = trim(adjustl(dim_names(j))) ! can't do trim on an array, so do it here
       enddo
       if ( mype == mype_out ) write(*,*)'variable, ndims, dims = ',trim(adjustl(varname)),ndims_var,dims(1:ndims_var)
@@ -148,23 +149,24 @@ do itype=1, num_obs_platforms ! loop over the obs platforms you specified
       if ( ndims_var == 1 ) then
 !        if ( dims(1) /= nobs_curr ) just_copy = .true.
          if ( dim_names(1) /= 'nlocs' ) just_copy = .true.
-         call get_and_output_netcdf_var(ncfileid,varname,dims,ncidout,nobs_tot,xtype,just_copy)
+         call get_and_output_netcdf_var(ncgroup_ids_in(g),varname,dims,ncgroup_ids_out(g),nobs_tot,xtype,just_copy)
       else if ( ndims_var == 2 ) then
          ! if a character variable, it's really a 1-d array, with 2nd dimension equal to the number of characters
          if ( xtype == nf90_char ) then
 !           if ( dims(2) /= nobs_curr ) just_copy = .true.
             if ( dim_names(2) /= 'nlocs' ) just_copy = .true.
             char_len = dims(1)  ! array of variable is (/ char_len, nobs_curr /)
-            call get_and_output_netcdf_var(ncfileid,varname,dims,ncidout,nobs_tot,xtype,just_copy,char_len)
+            call get_and_output_netcdf_var(ncgroup_ids_in(g),varname,dims,ncgroup_ids_out(g),nobs_tot,xtype,just_copy,char_len)
          else if ( xtype == nf90_float ) then
            !if ( dims(2) /= nobs_curr ) just_copy = .true. ! array of variable is (/ dim1, nobs_curr /)
             if ( dim_names(2) /= 'nlocs' ) just_copy = .true.
-            call get_and_output_netcdf_var_2d_real(ncfileid,varname,dims,ncidout,nobs_tot,just_copy)
+            call get_and_output_netcdf_var_2d_real(ncgroup_ids_in(g),varname,dims,ncgroup_ids_out(g),nobs_tot,just_copy)
          endif
       endif
       if ( just_copy .and. mype == mype_out ) write(*,*)'copying variable = ',trim(adjustl(varname))
 
    enddo ! end loop over variables
+   enddo ! end loop over groups
 
    call close_netcdf(obsfile,ncfileid)
    if ( mype == mype_out ) call close_netcdf(outname,ncidout) ! only open on mype_out

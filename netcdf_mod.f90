@@ -13,20 +13,21 @@ private
 
 ! public subroutines
 public :: open_netcdf, close_netcdf, get_netcdf_dims, define_output_file_from_template, get_and_output_netcdf_var
-public :: get_netcdf_info, get_and_output_netcdf_var_2d_real
+public :: get_netcdf_info, get_and_output_netcdf_var_2d_real, setup_groups
 
 ! parameter variable visible to this module only
 integer(i_kind), parameter :: nmax_groups = 500
 
 ! public variables
 logical, public :: large_variable_support = .false. 
-integer(i_kind), public :: numgrps, ncgroup_ids(nmax_groups)
+integer(i_kind), public :: numgrps, ncgroup_ids_in(nmax_groups), ncgroup_ids_out(nmax_groups)
 
 ! variables visible to this module only
 character(len=100) :: DIMSNAME,VARSNAME,ATTSNAME
 integer(i_kind) :: ncidin,ncidout,ndims,nvars,ngatts,unlimdimid,idims,dimsval,ivars,idims2,ivars2,&
            varstype,varsndims,varsdimids(4),varsnatts, ivarsnatts,igatts
 integer(i_kind) :: ncvarid, ierr, iret, rcode, ncstatus, i
+integer(i_kind) :: ncgroup_ids(nmax_groups)
 
 ! mpi definitions.
 include 'mpif.h'
@@ -108,6 +109,20 @@ subroutine get_netcdf_info(fname,ncfileid,ndims,nvars)
    endif
 end subroutine get_netcdf_info
 
+subroutine setup_groups(ncfileid)
+   integer(i_kind), intent(in)  :: ncfileid
+   ncstatus = nf90_inq_grps(ncfileid, numgrps, ncgroup_ids)
+   ncgroup_ids_in(1) = ncfileid
+   ncgroup_ids_in(2:numgrps) = ncgroup_ids
+   ! If there are groups, we can assume we read a netCDF4 file, and so we need
+   !   to output a netCDF4 file, too.  This can be done by simply setting
+   !   large_variable_support = true.
+   if ( numgrps > 0 ) then
+      if ( mype == mype_out ) write(*,*)'There are ',numgrps,' groups in the file'
+      large_variable_support = .true.
+   endif
+end subroutine setup_groups
+
 subroutine define_output_file_from_template(ncidin,fout,nobs_tot,ncidout)
    integer(i_kind), intent(in)    :: ncidin
    character(len=*), intent(in) :: fout
@@ -153,7 +168,8 @@ subroutine define_output_file_from_template(ncidin,fout,nobs_tot,ncidout)
    end do
 
    ! groups...numgrps could be 0, in which case this block doesn't get executed, which is ok.
-  !rcode = nf90_inq_grps(ncfileid, numgrps, ncgroup_ids)
+  !rcode = nf90_inq_grps(ncidin, numgrps, ncgroup_ids)
+   ncgroup_ids_out(1) = ncidout ! Need to keep the ID for the output file as a whole (also the "root" group)
    do i = 1,numgrps
       rcode = nf90_inq_grpname(ncgroup_ids(i), group_name)
       rcode = nf90_def_grp(ncidout, group_name, group_ncid) ! define group in output file; refer to group by $group_nicd
@@ -167,6 +183,7 @@ subroutine define_output_file_from_template(ncidin,fout,nobs_tot,ncidout)
             rcode=nf90_copy_att(ncgroup_ids(i),ivars,ATTSNAME,group_ncid,ivars2)
          end do
       end do
+      ncgroup_ids_out(i+1) = group_ncid ! Add 1 because element 1 is for ncidout
    end do
 
    ! global attributes
