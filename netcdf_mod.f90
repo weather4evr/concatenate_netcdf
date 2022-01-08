@@ -7,7 +7,7 @@ use mpisetup, only: stop2, npe, mype, mype_out, displs, scount, displs1d, scount
 
 implicit none
 
-include 'netcdf.inc' ! get rid of this once define_output_file_from_template_OLD is gone
+!include 'netcdf.inc'
 
 private
 
@@ -142,39 +142,11 @@ subroutine define_output_file_from_template(ncidin,fout,nobs_tot,ncidout)
       end do
    end do
    do igatts=1,ngatts
-      rcode=nf90_inq_attname(ncidin,nf_global,igatts,ATTSNAME)
-      rcode=nf90_copy_att(ncidin,nf_global,ATTSNAME,ncidout,nf_global)
+      rcode=nf90_inq_attname(ncidin,nf90_global,igatts,ATTSNAME)
+      rcode=nf90_copy_att(ncidin,nf90_global,ATTSNAME,ncidout,nf90_global)
    end do
    rcode=nf90_enddef(ncidout)
 end subroutine define_output_file_from_template
-
-subroutine define_output_file_from_template_OLD(fin,fout,ncidout)
-   character(len=*), intent(in) :: fin,fout
-   integer(i_kind), intent(inout) :: ncidout
-
-   rcode=nf_open(trim(adjustl(fin)),0,ncidin)
-   rcode=nf_create(trim(adjustl(fout)),0,ncidout)
-   rcode=nf_inq(ncidin,ndims,nvars,ngatts,unlimdimid)
-   do idims=1,ndims
-      rcode=nf_inq_dim(ncidin,idims,DIMSNAME,dimsval)
-      rcode=nf_def_dim(ncidout,DIMSNAME,dimsval,idims)
-      write(*,*)'my dim = ',trim(adjustl(DIMSNAME))
-   end do
-   do ivars=1,nvars
-      rcode=nf_inq_var(ncidin,ivars,VARSNAME,varstype,varsndims,varsdimids,varsnatts)
-      rcode=nf_def_var(ncidout,VARSNAME,varstype,varsndims,varsdimids,ivars)
-      do ivarsnatts=1,varsnatts
-         rcode=nf_inq_attname(ncidin,ivars,ivarsnatts,ATTSNAME)
-         rcode=nf_copy_att(ncidin,ivars,ATTSNAME,ncidout,ivars)
-      end do
-      write(*,*)'my var = ',trim(adjustl(VARSNAME))
-   end do
-   do igatts=1,ngatts
-      rcode=nf_inq_attname(ncidin,nf_global,igatts,ATTSNAME)
-      rcode=nf_copy_att(ncidin,nf_global,ATTSNAME,ncidout,nf_global)
-   end do
-   rcode=nf_enddef(ncidout)
-end subroutine define_output_file_from_template_OLD
 
 subroutine get_netcdf_var_1d_real(fileid,variable,dims,ncidout,nobs_tot,just_copy)
 
