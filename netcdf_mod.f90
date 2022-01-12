@@ -48,10 +48,16 @@ subroutine get_and_output_netcdf_var(fileid,variable,dims,ncidout,nobs_tot,xtype
    integer(i_kind),  intent(in), optional :: char_len
    if ( xtype == nf90_float ) then
       call get_netcdf_var_1d_real(fileid,variable,dims,ncidout,nobs_tot,just_copy)
-   elseif ( xtype == nf90_int ) then
+   elseif ( xtype == nf90_int .or. xtype == nf90_int64 ) then
       call get_netcdf_var_1d_integer(fileid,variable,dims,ncidout,nobs_tot,just_copy)
    elseif ( xtype == nf90_char) then
       call get_netcdf_var_1d_char(fileid,variable,dims,ncidout,nobs_tot,just_copy,char_len)
+   elseif ( xtype == nf90_string) then
+      if ( mype == mype_out ) write(*,*)'Variable '//trim(adjustl(variable))//' is a string; skipping output'
+   else
+      write(*,*)'Unsure what to do with '//trim(adjustl(variable))
+      write(*,*)'What type of variable is it?'
+      call stop2(54)
    endif
 end subroutine get_and_output_netcdf_var
 
