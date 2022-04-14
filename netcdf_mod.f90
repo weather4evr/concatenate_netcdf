@@ -13,7 +13,7 @@ private
 
 ! public subroutines
 public :: open_netcdf, close_netcdf, get_netcdf_dims, define_output_file_from_template, get_and_output_netcdf_var
-public :: get_netcdf_info, get_and_output_netcdf_var_2d_real, setup_groups
+public :: get_netcdf_info, get_and_output_netcdf_var_2d, setup_groups
 
 ! parameter variable visible to this module only
 integer(i_kind), parameter :: nmax_groups = 500
@@ -32,6 +32,11 @@ integer(i_kind) :: ncgroup_ids(nmax_groups)
 ! mpi definitions.
 include 'mpif.h'
 
+!interface get_and_output_netcdf_var_2d
+!  module procedure get_and_output_netcdf_var_2d_real
+!   module procedure get_and_output_netcdf_var_2d_integer
+!end interface
+
 !interface get_and_output_netcdf_var
 !   module procedure get_netcdf_var_1d_real
 !   module procedure get_netcdf_var_1d_integer
@@ -39,6 +44,22 @@ include 'mpif.h'
 !end interface
 
 contains
+
+subroutine get_and_output_netcdf_var_2d(fileid,variable,dims,ncidout,nobs_tot,xtype,just_copy)
+   integer(i_kind),  intent(in) :: fileid, ncidout,nobs_tot, xtype
+   character(len=*), intent(in) :: variable
+   integer(i_kind),  intent(in), dimension(4) :: dims
+   logical,          intent(in)           :: just_copy
+   if ( xtype == nf90_float ) then
+      call get_and_output_netcdf_var_2d_real(fileid,variable,dims,ncidout,nobs_tot,just_copy)
+   elseif ( xtype == nf90_int .or. xtype == nf90_int64 ) then
+      call get_and_output_netcdf_var_2d_integer(fileid,variable,dims,ncidout,nobs_tot,just_copy)
+   else
+      write(*,*)'Unsure what to do with '//trim(adjustl(variable))
+      write(*,*)'What type of variable is it?'
+      call stop2(53)
+   endif
+end subroutine get_and_output_netcdf_var_2d
 
 subroutine get_and_output_netcdf_var(fileid,variable,dims,ncidout,nobs_tot,xtype,just_copy,char_len)
    integer(i_kind),  intent(in) :: fileid, ncidout,nobs_tot, xtype
@@ -359,5 +380,48 @@ subroutine get_and_output_netcdf_var_2d_real(fileid,variable,dims,ncidout,nobs_t
    deallocate(output_allData)
 
 end subroutine get_and_output_netcdf_var_2d_real
+
+subroutine get_and_output_netcdf_var_2d_integer(fileid,variable,dims,ncidout,nobs_tot,just_copy)
+
+   integer(i_kind), intent(in) :: fileid, ncidout,nobs_tot
+   character(len=*), intent(in) :: variable
+   integer(i_kind), intent(in), dimension(4) :: dims
+   logical, intent(in) :: just_copy
+
+   integer, dimension(dims(1),dims(2))         :: output
+   integer, allocatable, dimension(:,:)  :: output_allData
+
+   ierr = 0
+   ncstatus = nf90_inq_varid(fileid,trim(adjustl(variable)),ncvarid) ; ierr = ierr + ncstatus
+   ncstatus = nf90_get_var(fileid,ncvarid,output)                    ; ierr = ierr + ncstatus
+
+   if ( ierr /= 0 ) then
+      write(0,*) 'Error reading data for '//trim(adjustl(variable))
+      write(0,*) 'ierr = ',ierr
+      call stop2(39) ! stop
+   endif
+
+   if ( just_copy ) then
+      allocate( output_allData(dims(1),dims(2)) ) ! nlevs, nobs_curr
+      output_allData = output
+   else
+      allocate(output_allData(dims(1),nobs_tot)) ! nlevs, nobs
+     ! Handle one vertical level at a time
+      do i = 1,dims(1)
+         call mpi_gatherv(output(i,:), scount1d(mype), mpi_real, output_allData(i,:), scount1d(:), displs1d(:), mpi_real, mype_out ,new_comm,iret)
+         if ( iret /= 0 ) then
+            if ( mype == mype_out ) write(*,*)'mpi_gatherv problem for '//trim(adjustl(variable))
+         endif
+      enddo
+   endif
+
+   ! output the variable from mype_out
+    if ( mype == mype_out ) then
+       rcode = nf90_inq_varid(ncidout,trim(adjustl(variable)),ncvarid)
+       rcode = nf90_put_var(ncidout,ncvarid,output_allData)
+    endif
+   deallocate(output_allData)
+
+end subroutine get_and_output_netcdf_var_2d_integer
 
 end module netcdf_mod

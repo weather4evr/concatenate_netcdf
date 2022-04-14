@@ -2,7 +2,7 @@ program concatenate_netcdf_files
 
 use netcdf
 use netcdf_mod, only: open_netcdf, close_netcdf, get_netcdf_dims, define_output_file_from_template, &
-                      get_and_output_netcdf_var, get_netcdf_info, get_and_output_netcdf_var_2d_real, &
+                      get_and_output_netcdf_var, get_netcdf_info, get_and_output_netcdf_var_2d, &
                       setup_groups, large_variable_support, numgrps, ncgroup_ids_out, ncgroup_ids_in
 use kinds, only : i_kind, r_kind
 use mpisetup, only : mpi_initialize, mpi_cleanup, mpi_datacounts, mype, npe, stop2, mype_out, pe_name, &
@@ -173,10 +173,10 @@ do itype=1, num_obs_platforms ! loop over the obs platforms you specified
             if ( dim_names(2) /= 'nlocs' ) just_copy = .true.
             char_len = dims(1)  ! array of variable is (/ char_len, nobs_curr /)
             call get_and_output_netcdf_var(ncgroup_ids_in(g),varname,dims,ncgroup_ids_out(g),nobs_tot,xtype,just_copy,char_len)
-         else if ( xtype == nf90_float ) then
+         else if ( xtype == nf90_float .or. xtype == nf90_int .or. xtype == nf90_int64 ) then
            !if ( dims(2) /= nobs_curr ) just_copy = .true. ! array of variable is (/ dim1, nobs_curr /)
             if ( dim_names(2) /= 'nlocs' ) just_copy = .true.
-            call get_and_output_netcdf_var_2d_real(ncgroup_ids_in(g),varname,dims,ncgroup_ids_out(g),nobs_tot,just_copy)
+            call get_and_output_netcdf_var_2d(ncgroup_ids_in(g),varname,dims,ncgroup_ids_out(g),nobs_tot,xtype,just_copy)
          endif
       endif
       if ( just_copy .and. mype == mype_out ) write(*,*)'copying variable = ',trim(adjustl(varname))
