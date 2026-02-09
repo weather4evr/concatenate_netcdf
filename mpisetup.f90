@@ -92,7 +92,7 @@ subroutine make_mpi_subcommunicator(nobs)
    integer(i_kind) :: color, ierr
 
    if ( nobs <= 0 ) then  ! these processers don't have obs, so. don't do anything with them
-      color = MPI_UNDEFINED ! don't add to the new communicator (new_comm)
+      color = -1 !MPI_UNDEFINED ! don't add to the new communicator (new_comm)
    else
       color = 0
    endif
